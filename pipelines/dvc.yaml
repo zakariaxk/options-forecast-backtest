@@ -1,0 +1,24 @@
+stages:
+  ingest:
+    cmd: python -m pipelines.ingest_yf --symbol ${symbol} --start-date ${start_date} --end-date ${end_date} --dest-uri data/raw
+    outs:
+      - data/raw/${symbol}
+  features:
+    cmd: python -m pipelines.features --symbol ${symbol} --raw-uri data/raw --raw-partition ${raw_partition} --version ${feature_version} --processed-uri data/processed
+    deps:
+      - data/raw/${symbol}/${raw_partition}
+    outs:
+      - data/processed/${symbol}/${feature_version}
+  train_xgb:
+    cmd: python -m pipelines.train_xgb --symbol ${symbol} --feature-version ${feature_version} --run-name ${run_name} --output-uri data/models --processed-uri data/processed
+    deps:
+      - data/processed/${symbol}/${feature_version}
+    outs:
+      - data/models/xgb_reg/${run_name}
+  predict:
+    cmd: python -m pipelines.predict --symbol ${symbol} --model-name ${model_name} --run-id ${run_name} --feature-version ${feature_version} --processed-uri data/processed --models-uri data/models --output-uri data/predictions
+    deps:
+      - data/models/${model_name}/${run_name}
+      - data/processed/${symbol}/${feature_version}
+    outs:
+      - data/predictions/${symbol}/${model_name}/${run_name}
