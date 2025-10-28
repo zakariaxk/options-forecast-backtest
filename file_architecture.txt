@@ -1,0 +1,33 @@
+options-forecast-backtest/
+├── README.md
+├── requirements.txt
+├── .env.example
+├── Makefile
+├── api/
+│   ├── main.py
+│   ├── core/
+│   ├── routers/
+│   ├── schemas/
+│   └── services/
+├── backtest/
+│   ├── engine.py
+│   ├── broker.py
+│   ├── metrics.py
+│   └── strategies/
+├── common/
+├── dashboard/
+│   ├── app.py
+│   └── components/
+├── ml/
+│   ├── datasets.py
+│   ├── models/
+│   └── utils/
+├── pipelines/
+│   ├── ingest_yf.py
+│   ├── features.py
+│   ├── train_xgb.py
+│   ├── train_torch.py
+│   ├── predict.py
+│   └── dvc.yaml
+└── tests/
+    └── unit/
