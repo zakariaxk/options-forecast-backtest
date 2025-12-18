@@ -58,6 +58,12 @@ class APIClient:
         except APIClientError:
             return False
 
+    def health(self) -> Dict[str, Any]:
+        payload = self._request("GET", "/health")
+        if not isinstance(payload, dict):
+            raise APIClientError(f"Unexpected health response: {payload!r}")
+        return payload
+
     def list_models(self) -> list[Dict[str, Any]]:
         return self._request("GET", "/models/") or []
 

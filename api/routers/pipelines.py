@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date
+
 from fastapi import APIRouter, Query
 
 from api.core.errors import bad_request, not_found
@@ -43,15 +45,15 @@ def get_latest_partition(symbol: str) -> dict:
 @router.post("/run-all")
 def run_all(
     symbol: str = Query(...),
-    start_date: str = Query(...),
-    end_date: str = Query(...),
+    start_date: date = Query(...),
+    end_date: date = Query(...),
     feature_version: str = Query(default="v1"),
     model_name: str = Query(default="xgb_reg"),
     model_run_name: str = Query(default="demo"),
 ) -> dict:
     try:
         ingest_res = run_ingestion(
-            IngestRequest(symbol=symbol, start_date=start_date, end_date=end_date)  # type: ignore[arg-type]
+            IngestRequest(symbol=symbol, start_date=start_date, end_date=end_date)
         )
     except Exception as exc:
         raise bad_request(f"Ingest failed: {exc}")
@@ -73,4 +75,3 @@ def run_all(
     except Exception as exc:
         raise bad_request(f"Train failed: {exc}")
     return {"ingest": ingest_res.dict(), "features": feat_res.dict(), "train": train_res.dict()}
-

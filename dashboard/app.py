@@ -47,11 +47,22 @@ def _sidebar_config() -> dict:
     st.sidebar.header("Dashboard")
     base_url_default = st.session_state.get("api_base_url", "http://127.0.0.1:8000/api/v1")
     api_base_url = st.sidebar.text_input("API Base URL", value=base_url_default)
+    if api_base_url and not api_base_url.startswith(("http://", "https://")):
+        api_base_url = f"http://{api_base_url}"
     st.session_state["api_base_url"] = api_base_url
     use_api = st.sidebar.toggle("Use API (recommended)", value=True)
     use_local = st.sidebar.toggle("Use local artifacts", value=True)
     if st.sidebar.button("Refresh cached data"):
         st.cache_data.clear()
+    if st.sidebar.button("Test API connection"):
+        client = APIClient(api_base_url)
+        try:
+            payload = client.health()
+            st.sidebar.success(f"OK: {payload.get('status')}")
+            st.sidebar.code(f"{client.base_url}/health")
+        except Exception as exc:
+            st.sidebar.error(str(exc))
+            st.sidebar.code(f"{client.base_url}/health")
     return {"api_base_url": api_base_url, "use_api": use_api, "use_local": use_local}
 
 

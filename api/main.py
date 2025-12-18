@@ -3,8 +3,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -12,12 +13,31 @@ from api.core.logging import configure_logging
 from api.core.settings import get_settings
 from api.routers import backtest, models, pipelines, predict
 from api.schemas.io import HealthResponse
+from api.core.errors import ApiError
 
 
 def create_app() -> FastAPI:
     configure_logging()
     get_settings()
     app = FastAPI(title="Options Forecast & Backtest API", version="1.0.0")
+
+    @app.exception_handler(ApiError)
+    async def api_error_handler(_: Request, exc: ApiError):
+        return JSONResponse(status_code=exc.status_code, content=exc.detail)
+
+    @app.exception_handler(ValueError)
+    async def value_error_handler(_: Request, exc: ValueError):
+        return JSONResponse(
+            status_code=400,
+            content={"error_code": "BAD_REQUEST", "message": str(exc), "details": {}},
+        )
+
+    @app.exception_handler(FileNotFoundError)
+    async def not_found_error_handler(_: Request, exc: FileNotFoundError):
+        return JSONResponse(
+            status_code=404,
+            content={"error_code": "NOT_FOUND", "message": str(exc), "details": {}},
+        )
 
     app.add_middleware(
         CORSMiddleware,
