@@ -43,6 +43,7 @@ options-forecast-backtest/
 ├── backtest/           # Engine, broker simulator, risk metrics, strategies
 ├── common/             # IO utilities, schema definitions, DB/cache helpers
 ├── dashboard/          # Streamlit app and UI components
+├── web/                # Lightweight web UI (served by FastAPI)
 ├── ml/                 # Datasets, PyTorch/XGBoost utilities, training helpers
 ├── pipelines/          # CLI pipelines (ingest, features, train, predict)
 ├── tests/              # Unit tests
@@ -224,14 +225,31 @@ make api           # default http://127.0.0.1:8000
 make api PORT=8001 # custom port
 ```
 
+### Built-in Web UI
+
+When the API is running, a lightweight web UI is served at:
+- `GET /` (e.g. `http://127.0.0.1:8000/`)
+
+It can:
+- list discovered models, prediction runs, and backtests
+- trigger prediction generation (writes parquet under `data/predictions/`)
+- run backtests (writes artifacts under `data/backtests/`)
+
 ### Key Endpoints
 - `GET /api/v1/health` – service health check.
-- `POST /api/v1/predictions` – trigger predictions (uses `PredictRequest`).
+- `POST /api/v1/predictions` – generate predictions from a trained model run.
 - `GET /api/v1/predictions/{symbol}/{run}` – summarize prediction runs.
+- `GET /api/v1/predictions/{symbol}/{run}/data` – return prediction rows as JSON (table-friendly).
+- `GET /api/v1/predictions/runs` – list discovered prediction runs.
 - `POST /api/v1/backtests` – run backtests via JSON/YAML config.
 - `GET /api/v1/backtests/{symbol}/{bt_id}` – fetch backtest metrics/artifacts.
+- `GET /api/v1/backtests/{symbol}/{bt_id}/data` – return trades/equity as JSON (table-friendly).
+- `GET /api/v1/backtests/runs` – list discovered backtest runs.
 - `GET /api/v1/models` – list available models and runs.
 - `GET /api/v1/models/{model}/latest` – retrieve latest metrics for a model.
+- `POST /api/v1/pipelines/ingest` – ingest equity + option contract history from Yahoo Finance.
+- `POST /api/v1/pipelines/features` – build features from a raw partition.
+- `POST /api/v1/pipelines/train` – train XGBoost/LSTM models.
 
 Route implementations: `api/routers/*.py`  
 Service layer: `api/services/*.py`  
@@ -295,6 +313,7 @@ MODELS_URI=data/models
 PREDICTIONS_URI=data/predictions
 BACKTESTS_URI=data/backtests
 PROCESSED_URI=data/processed
+RAW_URI=data/raw
 S3_BUCKET=ofb
 S3_ENDPOINT_URL=
 AWS_REGION=us-east-1
@@ -320,6 +339,7 @@ To integrate with S3, set `S3_BUCKET`, `S3_ENDPOINT_URL`, and AWS credentials (v
 ## Known Limitations
 
 - **Online Data Dependence**: `yfinance` ingestion requires network access; rate limits or DNS issues may interrupt runs. Consider caching or alternative providers for production.
+- **Historical Options Coverage**: Yahoo Finance does not provide a true “full historical options chain by date” feed; this project ingests a limited set of option contracts from the current chain and pulls each contract’s historical price series for the chosen date range, which works best for recent windows.
 - **Naive Option Targets**: Some illiquid options lack future price observations; fallback to underlying returns mitigates missing labels but may reduce signal quality.
 - **Baseline Strategies**: The packaged strategies are illustrative (straddles, credit spreads, covered calls). Tailor risk rules and sizing for real deployments.
 - **No MLflow/Airflow integration out of the box**: Hooks exist (see `common/schema.py` and settings) but additional configuration is necessary.

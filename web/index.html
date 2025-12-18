@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Options Forecast & Backtest</title>
+    <link rel="stylesheet" href="/static/app.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="container">
+        <div class="brand">
+          <div class="brand__title">Options Forecast & Backtest</div>
+          <div class="brand__meta">Pipelines · API · UI</div>
+        </div>
+        <nav class="nav" id="nav"></nav>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="card">
+        <div class="row row--space">
+          <div>
+            <h1 class="h1">Research Console</h1>
+            <p class="muted">
+              Generate predictions from a trained model and run historical backtests on stored artifacts.
+            </p>
+          </div>
+          <div class="status">
+            <span class="pill" id="healthPill">Checking API…</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="page-overview" class="page">
+        <div class="grid grid--2">
+          <div class="card">
+            <h2 class="h2">Models</h2>
+            <div class="muted">Discovered under <code>data/models</code></div>
+            <div id="modelsList" class="list"></div>
+          </div>
+          <div class="card">
+            <h2 class="h2">Runs</h2>
+            <div class="muted">Predictions + backtests discovered under <code>data/</code></div>
+            <div class="grid grid--2">
+              <div>
+                <div class="h3">Prediction Runs</div>
+                <div id="predictionRuns" class="list"></div>
+              </div>
+              <div>
+                <div class="h3">Backtest Runs</div>
+                <div id="backtestRuns" class="list"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="page-predict" class="page hidden">
+        <div class="grid grid--2">
+          <div class="card">
+            <h2 class="h2">Create Predictions</h2>
+            <form id="predictForm" class="form">
+              <label>
+                <div class="label">Symbol</div>
+                <input name="symbol" placeholder="AAPL" required />
+              </label>
+              <label>
+                <div class="label">Feature Version</div>
+                <input name="feature_version" placeholder="v1" value="v1" />
+              </label>
+              <label>
+                <div class="label">As-of Date (optional)</div>
+                <input name="as_of_date" placeholder="YYYY-MM-DD" />
+              </label>
+              <label>
+                <div class="label">Model</div>
+                <select name="model_name" id="modelSelect"></select>
+              </label>
+              <label>
+                <div class="label">Model Run (optional; defaults to latest)</div>
+                <input name="model_run_id" placeholder="demo" />
+              </label>
+              <label>
+                <div class="label">Prediction Run ID (optional)</div>
+                <input name="prediction_run_id" placeholder="pred_YYYYMMDDHHMMSS" />
+              </label>
+              <div class="row">
+                <button class="btn" type="submit">Generate</button>
+                <button class="btn btn--ghost" type="button" id="predictRefresh">Refresh Lists</button>
+              </div>
+            </form>
+          </div>
+          <div class="card">
+            <h2 class="h2">Result</h2>
+            <pre class="pre" id="predictResult">{}</pre>
+            <div class="row">
+              <button class="btn btn--ghost" type="button" id="openPrediction">Open Run In Table</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="page-explore" class="page hidden">
+        <div class="card">
+          <h2 class="h2">Explore Prediction Runs</h2>
+          <div class="grid grid--4">
+            <label>
+              <div class="label">Symbol</div>
+              <select id="exploreSymbol"></select>
+            </label>
+            <label>
+              <div class="label">Model</div>
+              <select id="exploreModel"></select>
+            </label>
+            <label>
+              <div class="label">Run</div>
+              <select id="exploreRun"></select>
+            </label>
+            <label>
+              <div class="label">Limit</div>
+              <input id="exploreLimit" value="200" />
+            </label>
+          </div>
+          <div class="row row--space">
+            <div class="muted">Sorted by <code>score</code> descending when available.</div>
+            <div class="row">
+              <button class="btn" type="button" id="exploreLoad">Load</button>
+            </div>
+          </div>
+          <div id="exploreTableWrap" class="tablewrap"></div>
+        </div>
+      </section>
+
+      <section id="page-backtest" class="page hidden">
+        <div class="grid grid--2">
+          <div class="card">
+            <h2 class="h2">Run Backtest</h2>
+            <form id="backtestForm" class="form">
+              <label>
+                <div class="label">Symbol</div>
+                <input name="symbol" placeholder="AAPL" required />
+              </label>
+              <label>
+                <div class="label">Strategy</div>
+                <select name="strategy">
+                  <option value="straddle">straddle</option>
+                  <option value="credit_spread">credit_spread</option>
+                  <option value="covered_call">covered_call</option>
+                </select>
+              </label>
+              <div class="grid grid--2">
+                <label>
+                  <div class="label">Start Date</div>
+                  <input name="start_date" placeholder="2020-01-01" required />
+                </label>
+                <label>
+                  <div class="label">End Date</div>
+                  <input name="end_date" placeholder="2020-12-31" required />
+                </label>
+              </div>
+              <label>
+                <div class="label">Predictions Run</div>
+                <select id="btPredRun"></select>
+              </label>
+              <div class="row">
+                <button class="btn" type="submit">Run</button>
+                <button class="btn btn--ghost" type="button" id="btRefresh">Refresh Runs</button>
+              </div>
+            </form>
+          </div>
+          <div class="card">
+            <h2 class="h2">Result</h2>
+            <pre class="pre" id="backtestResult">{}</pre>
+            <div class="row">
+              <button class="btn btn--ghost" type="button" id="loadBacktest">Load Trades + Equity</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid--2">
+          <div class="card">
+            <h2 class="h2">Metrics</h2>
+            <pre class="pre" id="btMetrics">{}</pre>
+          </div>
+          <div class="card">
+            <h2 class="h2">Trades (tail)</h2>
+            <div id="btTrades" class="tablewrap"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="container muted">
+        API: <code>/api/v1</code> · UI served by FastAPI · Artifacts under <code>data/</code>
+      </div>
+    </footer>
+
+    <script type="module" src="/static/app.js"></script>
+  </body>
+</html>
+

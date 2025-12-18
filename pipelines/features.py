@@ -139,9 +139,12 @@ def _scale_features(df: pd.DataFrame) -> tuple[pd.DataFrame, StandardScaler, lis
 def build_features(config: FeatureConfig) -> dict[str, str]:
     raw_partition_uri = f"{config.raw_uri}/{config.raw_partition}"
     equity = _load_equity(raw_partition_uri)
+    print(f"Equity rows: {len(equity)}")
     options = _load_options(raw_partition_uri)
+    print(f"Options rows: {len(options)}")
     equity_features = _compute_equity_features(equity)
     joined = _compute_option_features(options, equity_features, config)
+    print(f"Joined rows: {len(joined)}")
     processed, scaler, feature_cols = _scale_features(joined)
     output_base = f"{config.processed_uri}/{config.symbol}/{config.version}"
     features_uri = f"{output_base}/features.parquet"

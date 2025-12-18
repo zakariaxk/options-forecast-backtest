@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import date
 from typing import Iterable, Optional
 
 import numpy as np
@@ -17,12 +18,18 @@ def _load_features(config: PredictConfig) -> tuple[pd.DataFrame, dict]:
     base = f"{config.processed_uri}/{config.symbol}/{config.feature_version}"
     features = read_parquet(f"{base}/features.parquet")
     schema = read_json(f"{base}/schema.json")
+    if config.as_of_date is not None:
+        as_of = pd.to_datetime(config.as_of_date)
+        features["trade_date"] = pd.to_datetime(features["trade_date"])
+        features = features[features["trade_date"] == as_of].copy()
+        if features.empty:
+            raise ValueError(f"No features found for as_of_date={config.as_of_date}")
     return features, schema
 
 
 def _predict_xgb(config: PredictConfig, features: pd.DataFrame, schema: dict) -> pd.DataFrame:
     feature_cols = schema["scaled_columns"]
-    model_base = f"{config.models_uri}/{config.model_name}/{config.run_id}"
+    model_base = f"{config.models_uri}/{config.model_name}/{config.model_run_id}"
     model_path = StorageURI(f"{model_base}/model.json").local_path()
     params_path = f"{model_base}/params.json"
     params = read_json(params_path)
@@ -76,7 +83,7 @@ def _prepare_lstm_inputs(df: pd.DataFrame, feature_cols: list[str], seq_len: int
 
 
 def _predict_lstm(config: PredictConfig, features: pd.DataFrame, schema: dict) -> pd.DataFrame:
-    model_base = f"{config.models_uri}/{config.model_name}/{config.run_id}"
+    model_base = f"{config.models_uri}/{config.model_name}/{config.model_run_id}"
     info = read_json(f"{model_base}/info.json")
     seq_len = int(info.get("seq_len", 32))
     feature_cols = schema["scaled_columns"]
@@ -126,14 +133,15 @@ def run_predictions(config: PredictConfig):
         preds = _predict_xgb(config, features, schema)
     else:
         preds = _predict_lstm(config, features, schema)
-    prediction_base = f"{config.output_uri}/{config.symbol}/{config.model_name}/{config.run_id}"
+    prediction_base = f"{config.output_uri}/{config.symbol}/{config.model_name}/{config.prediction_run_id}"
     predictions_uri = f"{prediction_base}/predictions.parquet"
     metadata_uri = f"{prediction_base}/metadata.json"
     write_parquet(preds, predictions_uri)
     meta = {
         "symbol": config.symbol,
         "model_name": config.model_name,
-        "run_id": config.run_id,
+        "model_run_id": config.model_run_id,
+        "prediction_run_id": config.prediction_run_id,
         "rows": int(preds.shape[0]),
     }
     write_json(meta, metadata_uri)
@@ -144,20 +152,35 @@ def _parse_args(args: Optional[Iterable[str]] = None) -> PredictConfig:
     parser = argparse.ArgumentParser(description="Generate predictions from trained models.")
     parser.add_argument("--symbol", required=True)
     parser.add_argument("--model-name", required=True)
-    parser.add_argument("--run-id", required=True)
+    parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Model run id (directory under models_uri/model_name/).",
+    )
+    parser.add_argument(
+        "--prediction-run-id",
+        default=None,
+        help="Where to write predictions (directory under output_uri/symbol/model_name/). Defaults to --run-id.",
+    )
     parser.add_argument("--feature-version", required=True)
     parser.add_argument("--processed-uri", default="data/processed")
     parser.add_argument("--models-uri", default="data/models")
     parser.add_argument("--output-uri", default="data/predictions")
+    parser.add_argument("--as-of-date", default=None, help="Optional YYYY-MM-DD filter on trade_date.")
     parsed = parser.parse_args(args=args)
+    as_of_date: Optional[date] = None
+    if parsed.as_of_date:
+        as_of_date = date.fromisoformat(parsed.as_of_date)
     return PredictConfig(
         symbol=parsed.symbol,
         model_name=parsed.model_name,
-        run_id=parsed.run_id,
+        model_run_id=parsed.run_id,
+        prediction_run_id=parsed.prediction_run_id or parsed.run_id,
         feature_version=parsed.feature_version,
         processed_uri=parsed.processed_uri,
         models_uri=parsed.models_uri,
         output_uri=parsed.output_uri,
+        as_of_date=as_of_date,
     )
 
 
