@@ -1,6 +1,7 @@
 # Core
 fastapi
 uvicorn[standard]
+gunicorn
 pydantic
 pydantic-settings
 

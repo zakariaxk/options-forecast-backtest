@@ -1,0 +1,13 @@
+# Render Blueprint — auto-detected on connect
+# https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: stockpulse
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn api.main:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.8"
+      - key: ENV
+        value: production

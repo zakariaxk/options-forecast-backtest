@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from datetime import date
 from pathlib import Path
 from typing import Optional
@@ -10,7 +11,18 @@ from typing import Optional
 import pandas as pd
 
 
-_CACHE_DIR = Path("data/cache")
+def _default_cache_dir() -> Path:
+    """Use data/cache locally, /tmp/stockpulse_cache on Render / cloud."""
+    env = os.getenv("ENV", "dev")
+    if env == "production":
+        p = Path("/tmp/stockpulse_cache")
+    else:
+        p = Path("data/cache")
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+_CACHE_DIR = _default_cache_dir()
 
 
 def _cache_key(symbol: str, start: date, end: date) -> str:
