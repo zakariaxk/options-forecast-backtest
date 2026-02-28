@@ -3,111 +3,212 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Backtest Platform</title>
+    <title>Stockpulse — Backtest & Forecast</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/static/app.css" />
   </head>
   <body>
+
+    <!-- ─── Top bar ─── -->
     <header>
-      <div class="container header-row">
-        <h1>Backtest Platform</h1>
-        <span class="pill" id="healthPill">Checking API…</span>
+      <div class="wrap header-row">
+        <div class="brand">
+          <span class="brand-icon">&#9672;</span>
+          <span class="brand-name">stockpulse</span>
+        </div>
+        <div class="header-right">
+          <span class="pill" id="healthPill">checking&#8230;</span>
+        </div>
       </div>
     </header>
 
-    <main class="container">
-      <!-- Backtest Form -->
-      <section class="card">
-        <h2>Run Backtest</h2>
-        <form id="backtestForm" class="form-grid">
-          <label>
-            <span>Symbol</span>
-            <input name="symbol" value="AAPL" required />
-          </label>
-          <label>
-            <span>Strategy</span>
-            <select name="strategy" id="strategySelect">
+    <!-- ─── Navigation tabs ─── -->
+    <nav class="wrap">
+      <div class="tab-bar" role="tablist">
+        <button class="tab active" data-tab="backtest" role="tab" aria-selected="true">Backtest</button>
+        <button class="tab" data-tab="forecast" role="tab" aria-selected="false">Forecast</button>
+        <button class="tab" data-tab="options" role="tab" aria-selected="false">Options Chain</button>
+      </div>
+    </nav>
+
+    <main class="wrap">
+
+      <!-- ────────────── BACKTEST TAB ────────────── -->
+      <section id="panel-backtest" class="panel active">
+        <div class="panel-intro">
+          <h2>Run a backtest</h2>
+          <p class="subtext">Pick a ticker, strategy, and date range. We'll crunch the numbers against real market data.</p>
+        </div>
+
+        <form id="backtestForm" class="form-row">
+          <div class="field">
+            <label for="bt-symbol">Symbol</label>
+            <input id="bt-symbol" name="symbol" value="AAPL" required spellcheck="false" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="bt-strategy">Strategy</label>
+            <select id="bt-strategy" name="strategy">
               <option value="buy_and_hold" selected>Buy &amp; Hold</option>
               <option value="sma_crossover">SMA Crossover</option>
               <option value="rsi_mean_reversion">RSI Mean Reversion</option>
             </select>
-          </label>
-          <label>
-            <span>Start Date</span>
-            <input name="start_date" type="date" value="2020-01-02" required />
-          </label>
-          <label>
-            <span>End Date</span>
-            <input name="end_date" type="date" value="2020-12-31" required />
-          </label>
-          <label>
-            <span>Initial Cash ($)</span>
-            <input name="initial_cash" type="number" value="100000" min="1" step="1000" />
-          </label>
-
-          <!-- Strategy Parameters (shown dynamically) -->
-          <div id="smaParams" class="param-group hidden">
-            <label>
-              <span>Fast SMA Period</span>
-              <input name="fast_period" type="number" value="20" min="2" max="200" />
-            </label>
-            <label>
-              <span>Slow SMA Period</span>
-              <input name="slow_period" type="number" value="50" min="5" max="500" />
-            </label>
+          </div>
+          <div class="field">
+            <label for="bt-start">Start</label>
+            <input id="bt-start" name="start_date" type="date" value="2023-01-01" required />
+          </div>
+          <div class="field">
+            <label for="bt-end">End</label>
+            <input id="bt-end" name="end_date" type="date" value="2024-12-31" required />
+          </div>
+          <div class="field">
+            <label for="bt-cash">Initial cash</label>
+            <input id="bt-cash" name="initial_cash" type="number" value="100000" min="1" step="any" />
           </div>
 
-          <div id="rsiParams" class="param-group hidden">
-            <label>
-              <span>RSI Period</span>
-              <input name="rsi_period" type="number" value="14" min="2" max="100" />
-            </label>
-            <label>
-              <span>Oversold Threshold</span>
-              <input name="oversold" type="number" value="30" min="1" max="49" />
-            </label>
-            <label>
-              <span>Overbought Threshold</span>
-              <input name="overbought" type="number" value="70" min="51" max="99" />
-            </label>
+          <!-- SMA params -->
+          <div id="smaParams" class="field-group hidden">
+            <div class="field">
+              <label for="bt-fast">Fast SMA</label>
+              <input id="bt-fast" name="fast_period" type="number" value="20" min="2" max="200" />
+            </div>
+            <div class="field">
+              <label for="bt-slow">Slow SMA</label>
+              <input id="bt-slow" name="slow_period" type="number" value="50" min="5" max="500" />
+            </div>
           </div>
 
-          <div class="form-actions">
-            <button type="submit" class="btn">Run Backtest</button>
+          <!-- RSI params -->
+          <div id="rsiParams" class="field-group hidden">
+            <div class="field">
+              <label for="bt-rsi-period">RSI period</label>
+              <input id="bt-rsi-period" name="rsi_period" type="number" value="14" min="2" max="100" />
+            </div>
+            <div class="field">
+              <label for="bt-oversold">Oversold</label>
+              <input id="bt-oversold" name="oversold" type="number" value="30" min="1" max="49" />
+            </div>
+            <div class="field">
+              <label for="bt-overbought">Overbought</label>
+              <input id="bt-overbought" name="overbought" type="number" value="70" min="51" max="99" />
+            </div>
+          </div>
+
+          <div class="field field--action">
+            <button type="submit" class="btn btn--primary" id="btSubmitBtn">Run backtest</button>
           </div>
         </form>
-        <div id="errorBox" class="error-box hidden"></div>
-      </section>
 
-      <!-- Results (hidden until backtest completes) -->
-      <section id="results" class="hidden">
-        <!-- Summary Metrics -->
-        <div class="card">
-          <h2>Summary</h2>
-          <div id="summaryGrid" class="metric-grid"></div>
-        </div>
+        <div id="btError" class="callout callout--error hidden"></div>
 
-        <!-- Equity Curve -->
-        <div class="card">
-          <h2>Equity Curve</h2>
-          <canvas id="equityChart" height="300"></canvas>
-        </div>
-
-        <!-- Trades -->
-        <div class="card">
-          <h2>Trades</h2>
-          <div id="tradesTable"></div>
+        <!-- Backtest results -->
+        <div id="btResults" class="hidden fade-in">
+          <div class="metric-strip" id="btMetrics"></div>
+          <div class="chart-wrap">
+            <h3>Equity curve</h3>
+            <div class="chart-container"><canvas id="equityChart"></canvas></div>
+          </div>
+          <div class="trades-wrap">
+            <h3>Trade log</h3>
+            <div id="btTrades"></div>
+          </div>
         </div>
       </section>
+
+      <!-- ────────────── FORECAST TAB ────────────── -->
+      <section id="panel-forecast" class="panel">
+        <div class="panel-intro">
+          <h2>Price forecast</h2>
+          <p class="subtext">Statistical forecast using exponential smoothing. Honest confidence bands &mdash; not a crystal ball.</p>
+        </div>
+
+        <form id="forecastForm" class="form-row">
+          <div class="field">
+            <label for="fc-symbol">Symbol</label>
+            <input id="fc-symbol" name="symbol" value="AAPL" required spellcheck="false" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="fc-method">Method</label>
+            <select id="fc-method" name="method">
+              <option value="holt" selected>Holt Exponential Smoothing</option>
+              <option value="drift">Random Walk + Drift</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="fc-horizon">Horizon (days)</label>
+            <input id="fc-horizon" name="horizon_days" type="number" value="30" min="1" max="120" />
+          </div>
+          <div class="field">
+            <label for="fc-lookback">Lookback (days)</label>
+            <input id="fc-lookback" name="lookback_days" type="number" value="252" min="30" />
+          </div>
+          <div class="field field--action">
+            <button type="submit" class="btn btn--primary" id="fcSubmitBtn">Forecast</button>
+          </div>
+        </form>
+
+        <div id="fcError" class="callout callout--error hidden"></div>
+
+        <div id="fcResults" class="hidden fade-in">
+          <div class="metric-strip" id="fcMetrics"></div>
+          <div class="chart-wrap">
+            <h3>Forecast</h3>
+            <div class="chart-container"><canvas id="forecastChart"></canvas></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ────────────── OPTIONS TAB ────────────── -->
+      <section id="panel-options" class="panel">
+        <div class="panel-intro">
+          <h2>Options chain</h2>
+          <p class="subtext">Live options data from the market. Pick a symbol and expiry to explore.</p>
+        </div>
+
+        <form id="optionsForm" class="form-row">
+          <div class="field">
+            <label for="opt-symbol">Symbol</label>
+            <input id="opt-symbol" name="symbol" value="AAPL" required spellcheck="false" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="opt-expiry">Expiry</label>
+            <select id="opt-expiry" name="expiry">
+              <option value="">Nearest available</option>
+            </select>
+          </div>
+          <div class="field field--action">
+            <button type="submit" class="btn btn--primary" id="optSubmitBtn">Load chain</button>
+          </div>
+        </form>
+
+        <div id="optError" class="callout callout--error hidden"></div>
+
+        <div id="optResults" class="hidden fade-in">
+          <div class="metric-strip" id="optMeta"></div>
+          <div class="opt-tables">
+            <div class="opt-half">
+              <h3>Calls</h3>
+              <div id="optCalls" class="table-scroll"></div>
+            </div>
+            <div class="opt-half">
+              <h3>Puts</h3>
+              <div id="optPuts" class="table-scroll"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
     </main>
 
     <footer>
-      <div class="container muted">
-        API: <code>/api/v1</code> · Data: yfinance OHLCV (cached)
+      <div class="wrap footer-row">
+        <span>data from yfinance &middot; cached locally &middot; not financial advice</span>
       </div>
     </footer>
 
-    <!-- Lightweight chart library (no npm needed) -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="/static/app.js"></script>
   </body>

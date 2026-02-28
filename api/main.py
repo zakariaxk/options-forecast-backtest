@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from api.core.errors import ApiError
 from api.core.logging import configure_logging
 from api.core.settings import get_settings
-from api.routers import backtest
+from api.routers import backtest, forecast, options
 from api.schemas.io import HealthResponse
 
 
@@ -52,6 +52,8 @@ def create_app() -> FastAPI:
         return HealthResponse(status="ok", time=datetime.now(timezone.utc))
 
     app.include_router(backtest.router, prefix="/api/v1")
+    app.include_router(forecast.router, prefix="/api/v1")
+    app.include_router(options.router, prefix="/api/v1")
 
     # --- Static UI ---------------------------------------------------------
 

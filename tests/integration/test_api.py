@@ -334,3 +334,83 @@ class TestBacktestErrors:
                 "end_date": "2020-01-08",
             })
         assert r.status_code == 422
+
+
+# ── POST /forecast/ ──────────────────────────────────────────
+
+def _forecast_prices(n: int = 100) -> pd.DataFrame:
+    """Deterministic price fixture for forecast tests."""
+    dates = pd.bdate_range("2024-01-02", periods=n)
+    closes = [150.0 + i * 0.3 for i in range(n)]
+    return pd.DataFrame({
+        "date": dates,
+        "open": closes,
+        "high": [c * 1.01 for c in closes],
+        "low": [c * 0.99 for c in closes],
+        "close": closes,
+        "volume": [1_000_000] * n,
+    })
+
+
+class TestForecastAPI:
+    def test_holt_forecast_success(self, client):
+        with patch("forecast.engine.fetch_underlying_prices", return_value=_forecast_prices()):
+            r = client.post("/api/v1/forecast/", json={
+                "symbol": "AAPL",
+                "method": "holt",
+                "horizon_days": 10,
+            })
+        assert r.status_code == 200
+        body = r.json()
+        assert body["symbol"] == "AAPL"
+        assert body["method"] == "holt"
+        assert len(body["forecast"]) == 10
+        assert len(body["historical_tail"]) > 0
+        assert "mae" in body["diagnostics"]
+
+    def test_drift_forecast_success(self, client):
+        with patch("forecast.engine.fetch_underlying_prices", return_value=_forecast_prices()):
+            r = client.post("/api/v1/forecast/", json={
+                "symbol": "AAPL",
+                "method": "drift",
+                "horizon_days": 5,
+            })
+        assert r.status_code == 200
+        assert r.json()["method"] == "drift"
+        assert len(r.json()["forecast"]) == 5
+
+    def test_forecast_has_bands(self, client):
+        with patch("forecast.engine.fetch_underlying_prices", return_value=_forecast_prices()):
+            r = client.post("/api/v1/forecast/", json={
+                "symbol": "AAPL",
+                "horizon_days": 10,
+            })
+        for pt in r.json()["forecast"]:
+            assert "price" in pt
+            assert "lower" in pt
+            assert "upper" in pt
+            assert pt["lower"] <= pt["price"] <= pt["upper"]
+
+    def test_forecast_unknown_method_422(self, client):
+        r = client.post("/api/v1/forecast/", json={
+            "symbol": "AAPL",
+            "method": "arima",
+            "horizon_days": 10,
+        })
+        assert r.status_code == 422
+
+    def test_forecast_horizon_zero_422(self, client):
+        r = client.post("/api/v1/forecast/", json={
+            "symbol": "AAPL",
+            "horizon_days": 0,
+        })
+        assert r.status_code == 422
+
+    def test_forecast_no_nan(self, client):
+        with patch("forecast.engine.fetch_underlying_prices", return_value=_forecast_prices()):
+            r = client.post("/api/v1/forecast/", json={
+                "symbol": "AAPL",
+                "horizon_days": 20,
+            })
+        assert "NaN" not in r.text
+        assert "Infinity" not in r.text
