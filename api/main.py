@@ -60,6 +60,20 @@ def create_app() -> FastAPI:
     if static_dir.exists():
         app.mount("/static", StaticFiles(directory=static_dir.as_posix()), name="static")
     index_path = web_dir / "index.html"
+    favicon_path = web_dir / "favicon.svg"
+
+    @app.get("/favicon.svg")
+    def favicon():
+        if favicon_path.exists():
+            return FileResponse(favicon_path.as_posix(), media_type="image/svg+xml")
+        return JSONResponse(status_code=404, content={"detail": "Not found"})
+
+    @app.get("/favicon.ico")
+    def favicon_ico():
+        """Browsers request /favicon.ico — redirect to SVG."""
+        if favicon_path.exists():
+            return FileResponse(favicon_path.as_posix(), media_type="image/svg+xml")
+        return JSONResponse(status_code=404, content={"detail": "Not found"})
 
     @app.get("/")
     def ui_index():
