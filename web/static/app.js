@@ -3,13 +3,23 @@
    Tabs: Backtest · Forecast · Options Chain
    ═══════════════════════════════════════════════════════════ */
 
+// ── Global error trap — catch anything that slips through ──
+
+window.onerror = function (msg, src, line, col) {
+  console.error("JS Error:", msg, src, line, col);
+  return false;
+};
+window.addEventListener("unhandledrejection", function (e) {
+  console.error("Unhandled promise:", e.reason);
+});
+
 const API = "/api/v1";
 
 // ── Helpers ─────────────────────────────────────────────────
 
 const $ = id => document.getElementById(id);
-const show = el => el.classList.remove("hidden");
-const hide = el => el.classList.add("hidden");
+const show = el => { if (el) el.classList.remove("hidden"); };
+const hide = el => { if (el) el.classList.add("hidden"); };
 
 function fmt(n, d = 2) {
   if (n == null || isNaN(n)) return "\u2014";
@@ -96,6 +106,11 @@ function renderEquityCurve(curve) {
   const canvas = $("equityChart");
   if (btChart) btChart.destroy();
 
+  if (typeof Chart === "undefined") {
+    if (canvas) canvas.parentElement.innerHTML = '<p style="color:var(--text3);padding:20px;font-size:0.85rem">Chart.js not loaded — equity data received but chart cannot render.</p>';
+    return;
+  }
+
   btChart = new Chart(canvas, {
     type: "line",
     data: {
@@ -142,14 +157,13 @@ function getBtParams(form) {
 
 async function handleBacktest(e) {
   e.preventDefault();
-  const form = new FormData(e.currentTarget);
   const btn = $("btSubmitBtn");
   const errBox = $("btError");
-
-  hide(errBox); hide($("btResults"));
-  btn.disabled = true; btn.textContent = "Running\u2026";
-
   try {
+    const form = new FormData(e.currentTarget);
+    hide(errBox); hide($("btResults"));
+    if (btn) { btn.disabled = true; btn.textContent = "Running\u2026"; }
+
     const data = await apiFetch("/backtests/", {
       method: "POST",
       body: JSON.stringify({
@@ -166,10 +180,9 @@ async function handleBacktest(e) {
     renderBtTrades(data.trades);
     show($("btResults"));
   } catch (err) {
-    errBox.textContent = err.message;
-    show(errBox);
+    if (errBox) { errBox.textContent = err.message; show(errBox); }
   } finally {
-    btn.disabled = false; btn.textContent = "Run backtest";
+    if (btn) { btn.disabled = false; btn.textContent = "Run backtest"; }
   }
 }
 
@@ -196,6 +209,10 @@ function renderForecastChart(data) {
   const canvas = $("forecastChart");
   if (fcChart) fcChart.destroy();
 
+  if (typeof Chart === "undefined") {
+    if (canvas) canvas.parentElement.innerHTML = '<p style="color:var(--text3);padding:20px;font-size:0.85rem">Chart.js not loaded — forecast data received but chart cannot render.</p>';
+    return;
+  }
   const histLabels = data.historical_tail.map(p => p.date);
   const histPrices = data.historical_tail.map(p => p.price);
 
@@ -261,14 +278,13 @@ function renderForecastChart(data) {
 
 async function handleForecast(e) {
   e.preventDefault();
-  const form = new FormData(e.currentTarget);
   const btn = $("fcSubmitBtn");
   const errBox = $("fcError");
-
-  hide(errBox); hide($("fcResults"));
-  btn.disabled = true; btn.textContent = "Forecasting\u2026";
-
   try {
+    const form = new FormData(e.currentTarget);
+    hide(errBox); hide($("fcResults"));
+    if (btn) { btn.disabled = true; btn.textContent = "Forecasting\u2026"; }
+
     const data = await apiFetch("/forecast/", {
       method: "POST",
       body: JSON.stringify({
@@ -282,10 +298,9 @@ async function handleForecast(e) {
     renderForecastChart(data);
     show($("fcResults"));
   } catch (err) {
-    errBox.textContent = err.message;
-    show(errBox);
+    if (errBox) { errBox.textContent = err.message; show(errBox); }
   } finally {
-    btn.disabled = false; btn.textContent = "Forecast";
+    if (btn) { btn.disabled = false; btn.textContent = "Forecast"; }
   }
 }
 
@@ -338,16 +353,15 @@ function populateExpiryDropdown(expiries, current) {
 
 async function handleOptions(e) {
   e.preventDefault();
-  const form = new FormData(e.currentTarget);
   const btn = $("optSubmitBtn");
   const errBox = $("optError");
-
-  hide(errBox); hide($("optResults"));
-  btn.disabled = true; btn.textContent = "Loading\u2026";
-
-  const expiry = form.get("expiry");
-
   try {
+    const form = new FormData(e.currentTarget);
+    hide(errBox); hide($("optResults"));
+    if (btn) { btn.disabled = true; btn.textContent = "Loading\u2026"; }
+
+    const expiry = form.get("expiry");
+
     const data = await apiFetch("/options/chain", {
       method: "POST",
       body: JSON.stringify({
@@ -362,10 +376,9 @@ async function handleOptions(e) {
     renderOptTable(data.puts, "optPuts");
     show($("optResults"));
   } catch (err) {
-    errBox.textContent = err.message;
-    show(errBox);
+    if (errBox) { errBox.textContent = err.message; show(errBox); }
   } finally {
-    btn.disabled = false; btn.textContent = "Load chain";
+    if (btn) { btn.disabled = false; btn.textContent = "Load chain"; }
   }
 }
 
@@ -408,17 +421,25 @@ function chartOpts(yFmt) {
 // ── Init ────────────────────────────────────────────────────
 
 document.addEventListener("DOMContentLoaded", () => {
-  checkHealth();
-  initTabs();
+  try {
+    checkHealth();
+    initTabs();
 
-  // Backtest
-  $("backtestForm").addEventListener("submit", handleBacktest);
-  $("bt-strategy").addEventListener("change", updateParamVisibility);
-  updateParamVisibility();
+    // Backtest
+    const btForm = $("backtestForm");
+    if (btForm) btForm.addEventListener("submit", handleBacktest);
+    const btStrat = $("bt-strategy");
+    if (btStrat) btStrat.addEventListener("change", updateParamVisibility);
+    updateParamVisibility();
 
-  // Forecast
-  $("forecastForm").addEventListener("submit", handleForecast);
+    // Forecast
+    const fcForm = $("forecastForm");
+    if (fcForm) fcForm.addEventListener("submit", handleForecast);
 
-  // Options
-  $("optionsForm").addEventListener("submit", handleOptions);
+    // Options
+    const optForm = $("optionsForm");
+    if (optForm) optForm.addEventListener("submit", handleOptions);
+  } catch (err) {
+    console.error("Init failed:", err);
+  }
 });
