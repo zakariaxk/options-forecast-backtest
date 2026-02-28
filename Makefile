@@ -1,35 +1,17 @@
-.PHONY: setup lint test ingest features train predict backtest api dashboard
+.PHONY: setup lint test api
 
 PYTHON ?= $(shell command -v python3 >/dev/null 2>&1 && echo python3 || echo python)
 
 setup:
-	$(PYTHON) -m pip install --upgrade pip
-	$(PYTHON) -m pip install -r requirements.txt
+	$(PYTHON) -m venv .venv
+	.venv/bin/pip install --upgrade pip
+	.venv/bin/pip install -r requirements.txt
 
 lint:
-	ruff check . || true
-	mypy || true
+	ruff check .
 
 test:
-	pytest -q
-
-ingest:
-	$(PYTHON) -m pipelines.ingest_yf --symbol $(SYMBOL) --start-date $(START) --end-date $(END) --dest-uri data/raw
-
-features:
-	$(PYTHON) -m pipelines.features --symbol $(SYMBOL) --raw-uri data/raw --raw-partition $(PARTITION) --version $(VERSION) --processed-uri data/processed
-
-train:
-	$(PYTHON) -m pipelines.train_xgb --symbol $(SYMBOL) --feature-version $(VERSION) --run-name $(RUN) --processed-uri data/processed --output-uri data/models --model-name $(MODEL)
-
-predict:
-	$(PYTHON) -m pipelines.predict --symbol $(SYMBOL) --model-name $(MODEL) --run-id $(RUN) --feature-version $(VERSION) --processed-uri data/processed --models-uri data/models --output-uri data/predictions
-
-backtest:
-	$(PYTHON) -c "from common.schema import BacktestConfig; from backtest.engine import run_backtest; cfg = BacktestConfig(name='cli_backtest', symbol='$(SYMBOL)', strategy='straddle', start_date='$(START)', end_date='$(END)', data={'predictions_uri': '$(PREDICTIONS)'}); result = run_backtest(cfg); print(result.metrics)"
+	.venv/bin/python -m pytest tests/ -v
 
 api:
-	uvicorn api.main:app --reload --port $(if $(PORT),$(PORT),8000)
-
-dashboard:
-	streamlit run dashboard/app.py
+	.venv/bin/uvicorn api.main:app --reload --port $(if $(PORT),$(PORT),8000)

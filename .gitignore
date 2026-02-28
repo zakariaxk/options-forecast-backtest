@@ -208,3 +208,5 @@ __marimo__/
 
 # Project-specific
 designdoc.txt
+data/cache/
+.DS_Store

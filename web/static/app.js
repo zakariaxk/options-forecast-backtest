@@ -1,307 +1,231 @@
+/* Backtest Platform — UI (vanilla JS, no build step) */
+
 const API = "/api/v1";
 
-const NAV = [
-  { id: "overview", label: "Overview" },
-  { id: "predict", label: "Predict" },
-  { id: "explore", label: "Explore" },
-  { id: "backtest", label: "Backtest" },
-];
+// ── Helpers ─────────────────────────────────────────────────
 
-const state = {
-  models: [],
-  predictionRuns: [],
-  backtestRuns: [],
-  lastPrediction: null,
-  lastBacktest: null,
-};
+function $(id) { return document.getElementById(id); }
 
-function el(id) {
-  return document.getElementById(id);
+function show(el)  { el.classList.remove("hidden"); }
+function hide(el)  { el.classList.add("hidden"); }
+
+function fmt(n, decimals = 2) {
+  if (n == null) return "—";
+  return Number(n).toFixed(decimals);
 }
 
-function setJson(target, obj) {
-  target.textContent = JSON.stringify(obj ?? {}, null, 2);
+function pct(n) {
+  if (n == null) return "—";
+  return (Number(n) * 100).toFixed(2) + "%";
 }
+
+function money(n) {
+  if (n == null) return "—";
+  return "$" + Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// ── API Call ────────────────────────────────────────────────
 
 async function apiFetch(path, options) {
   const res = await fetch(`${API}${path}`, {
     headers: { "Content-Type": "application/json" },
     ...options,
   });
-  const contentType = res.headers.get("content-type") || "";
-  let payload = null;
-  if (contentType.includes("application/json")) payload = await res.json();
-  else payload = await res.text();
+  const payload = await res.json();
   if (!res.ok) {
-    const detail = payload?.detail ?? payload;
-    const message =
-      typeof detail === "string" ? detail : detail?.message ?? JSON.stringify(detail ?? payload);
-    throw new Error(message);
+    const msg = payload?.message || payload?.detail?.message || JSON.stringify(payload);
+    throw new Error(msg);
   }
   return payload;
 }
 
-function activePage() {
-  const hash = (location.hash || "#overview").replace("#", "");
-  return NAV.some((x) => x.id === hash) ? hash : "overview";
-}
+// ── Health Check ────────────────────────────────────────────
 
-function renderNav() {
-  const nav = el("nav");
-  const page = activePage();
-  nav.innerHTML = NAV.map(
-    (item) => `<a href="#${item.id}" class="${item.id === page ? "active" : ""}">${item.label}</a>`,
-  ).join("");
-}
-
-function showPage() {
-  const page = activePage();
-  for (const item of NAV) {
-    const section = el(`page-${item.id}`);
-    if (!section) continue;
-    section.classList.toggle("hidden", item.id !== page);
-  }
-  renderNav();
-}
-
-async function refreshHealth() {
-  const pill = el("healthPill");
-  pill.className = "pill";
-  pill.textContent = "Checking API…";
+async function checkHealth() {
+  const pill = $("healthPill");
   try {
     const data = await apiFetch("/health");
-    pill.classList.add("pill--ok");
-    pill.textContent = `API OK · ${new Date(data.time).toLocaleString()}`;
-  } catch (err) {
-    pill.classList.add("pill--bad");
-    pill.textContent = `API ERROR · ${err.message}`;
+    pill.className = "pill pill--ok";
+    pill.textContent = "API OK";
+  } catch {
+    pill.className = "pill pill--bad";
+    pill.textContent = "API Offline";
   }
 }
 
-function renderModels() {
-  const wrap = el("modelsList");
-  if (!state.models.length) {
-    wrap.innerHTML = `<div class="item">No models found</div>`;
-    return;
-  }
-  wrap.innerHTML = state.models
-    .map(
-      (m) => `
-        <div class="item">
-          <div><strong>${m.name}</strong></div>
-          <div class="meta">${m.runs?.length ? `runs: ${m.runs.join(", ")}` : "no runs"}</div>
-        </div>
-      `,
-    )
-    .join("");
+// ── Render: Summary Metrics ─────────────────────────────────
+
+const METRIC_CONFIG = [
+  { key: "total_return", label: "Total Return", format: pct },
+  { key: "cagr",         label: "CAGR",         format: pct },
+  { key: "sharpe",       label: "Sharpe",       format: fmt },
+  { key: "sortino",      label: "Sortino",      format: fmt },
+  { key: "max_drawdown", label: "Max Drawdown", format: pct },
+  { key: "volatility",   label: "Volatility",   format: pct },
+  { key: "calmar",       label: "Calmar",       format: fmt },
+];
+
+function renderSummary(summary) {
+  const grid = $("summaryGrid");
+  grid.innerHTML = METRIC_CONFIG.map(({ key, label, format }) => {
+    const val = summary[key];
+    const formatted = format(val);
+    const cls = val > 0 ? "positive" : val < 0 ? "negative" : "";
+    return `
+      <div class="metric-card">
+        <div class="label">${label}</div>
+        <div class="value ${cls}">${formatted}</div>
+      </div>`;
+  }).join("");
 }
 
-function renderRuns() {
-  const predWrap = el("predictionRuns");
-  const btWrap = el("backtestRuns");
+// ── Render: Equity Curve ────────────────────────────────────
 
-  predWrap.innerHTML =
-    state.predictionRuns.length === 0
-      ? `<div class="item">No prediction runs</div>`
-      : state.predictionRuns
-          .slice(-30)
-          .reverse()
-          .map((r) => `<div class="item"><strong>${r.symbol}</strong> · ${r.model_name} · ${r.prediction_run_id}</div>`)
-          .join("");
+let chartInstance = null;
 
-  btWrap.innerHTML =
-    state.backtestRuns.length === 0
-      ? `<div class="item">No backtest runs</div>`
-      : state.backtestRuns
-          .slice(-30)
-          .reverse()
-          .map((r) => `<div class="item"><strong>${r.symbol}</strong> · ${r.bt_id}</div>`)
-          .join("");
-}
+function renderEquityCurve(equityCurve) {
+  const canvas = $("equityChart");
+  if (chartInstance) chartInstance.destroy();
 
-function renderModelSelects() {
-  const modelSelect = el("modelSelect");
-  const exploreModel = el("exploreModel");
-  const names = state.models.map((m) => m.name);
-  const options = names.map((n) => `<option value="${n}">${n}</option>`).join("");
-  modelSelect.innerHTML = options || `<option value="xgb_reg">xgb_reg</option>`;
-  exploreModel.innerHTML = options || `<option value="xgb_reg">xgb_reg</option>`;
-}
+  const labels = equityCurve.map(p => p.date.slice(0, 10));
+  const data = equityCurve.map(p => p.nav);
 
-function renderExploreSelectors() {
-  const symbols = [...new Set(state.predictionRuns.map((r) => r.symbol))].sort();
-  const exploreSymbol = el("exploreSymbol");
-  exploreSymbol.innerHTML = symbols.map((s) => `<option value="${s}">${s}</option>`).join("");
-  if (!exploreSymbol.value && symbols.length) exploreSymbol.value = symbols[0];
-  updateExploreRuns();
-}
-
-function updateExploreRuns() {
-  const symbol = el("exploreSymbol").value;
-  const model = el("exploreModel").value;
-  const runs = state.predictionRuns
-    .filter((r) => r.symbol === symbol && r.model_name === model)
-    .map((r) => r.prediction_run_id)
-    .sort();
-  const exploreRun = el("exploreRun");
-  exploreRun.innerHTML = runs.map((r) => `<option value="${r}">${r}</option>`).join("");
-  if (!exploreRun.value && runs.length) exploreRun.value = runs[runs.length - 1];
-}
-
-function renderBacktestPredictionSelect() {
-  const select = el("btPredRun");
-  const items = state.predictionRuns.slice().reverse();
-  select.innerHTML = items
-    .map(
-      (r) =>
-        `<option value="${r.symbol}||${r.model_name}||${r.prediction_run_id}">${r.symbol} · ${r.model_name} · ${r.prediction_run_id}</option>`,
-    )
-    .join("");
-}
-
-function renderTable(container, rows) {
-  if (!rows || rows.length === 0) {
-    container.innerHTML = `<div class="muted" style="padding: 12px;">No rows</div>`;
-    return;
-  }
-  const cols = Object.keys(rows[0]);
-  const header = cols.map((c) => `<th>${c}</th>`).join("");
-  const body = rows
-    .map((r) => `<tr>${cols.map((c) => `<td>${r[c] ?? ""}</td>`).join("")}</tr>`)
-    .join("");
-  container.innerHTML = `<table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>`;
-}
-
-async function refreshData() {
-  state.models = await apiFetch("/models");
-  state.predictionRuns = await apiFetch("/predictions/runs");
-  state.backtestRuns = await apiFetch("/backtests/runs");
-  renderModels();
-  renderRuns();
-  renderModelSelects();
-  renderExploreSelectors();
-  renderBacktestPredictionSelect();
-}
-
-function bindEvents() {
-  window.addEventListener("hashchange", showPage);
-
-  el("predictRefresh").addEventListener("click", async () => {
-    await refreshData();
+  chartInstance = new Chart(canvas, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{
+        label: "NAV ($)",
+        data,
+        borderColor: "#4f8ff7",
+        backgroundColor: "rgba(79, 143, 247, 0.08)",
+        fill: true,
+        tension: 0.1,
+        pointRadius: 0,
+        borderWidth: 2,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => money(ctx.parsed.y),
+          },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { color: "#8b8fa3", maxTicksLimit: 12, font: { size: 11 } },
+          grid: { color: "rgba(42,45,58,0.5)" },
+        },
+        y: {
+          ticks: {
+            color: "#8b8fa3",
+            font: { size: 11 },
+            callback: v => "$" + v.toLocaleString(),
+          },
+          grid: { color: "rgba(42,45,58,0.5)" },
+        },
+      },
+    },
   });
+}
 
-  el("predictForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const form = new FormData(e.currentTarget);
-    const payload = {
-      symbol: String(form.get("symbol") || "").trim(),
-      feature_version: String(form.get("feature_version") || "v1").trim(),
-      model_name: String(form.get("model_name") || "").trim() || null,
-      model_run_id: String(form.get("model_run_id") || "").trim() || null,
-      prediction_run_id: String(form.get("prediction_run_id") || "").trim() || null,
-      as_of_date: String(form.get("as_of_date") || "").trim() || null,
+// ── Render: Trades Table ────────────────────────────────────
+
+function renderTrades(trades) {
+  const wrap = $("tradesTable");
+  if (!trades.length) {
+    wrap.innerHTML = `<p class="muted">No trades</p>`;
+    return;
+  }
+  const cols = Object.keys(trades[0]);
+  wrap.innerHTML = `
+    <table>
+      <thead><tr>${cols.map(c => `<th>${c}</th>`).join("")}</tr></thead>
+      <tbody>${trades.map(t =>
+        `<tr>${cols.map(c => `<td>${t[c] ?? ""}</td>`).join("")}</tr>`
+      ).join("")}</tbody>
+    </table>`;
+}
+
+// ── Strategy Param Visibility ───────────────────────────────
+
+function updateParamVisibility() {
+  const strategy = $("strategySelect").value;
+  const sma = $("smaParams");
+  const rsi = $("rsiParams");
+  if (sma) { strategy === "sma_crossover" ? show(sma) : hide(sma); }
+  if (rsi) { strategy === "rsi_mean_reversion" ? show(rsi) : hide(rsi); }
+}
+
+function getStrategyParams(form) {
+  const strategy = form.get("strategy");
+  if (strategy === "sma_crossover") {
+    return {
+      fast_period: parseInt(form.get("fast_period")) || 20,
+      slow_period: parseInt(form.get("slow_period")) || 50,
     };
-    try {
-      const data = await apiFetch("/predictions", { method: "POST", body: JSON.stringify(payload) });
-      state.lastPrediction = data;
-      setJson(el("predictResult"), data);
-      await refreshData();
-    } catch (err) {
-      setJson(el("predictResult"), { error: err.message });
-    }
-  });
-
-  el("openPrediction").addEventListener("click", () => {
-    if (!state.lastPrediction) return;
-    location.hash = "#explore";
-    setTimeout(() => {
-      el("exploreSymbol").value = state.lastPrediction?.symbol ?? el("exploreSymbol").value;
-      el("exploreModel").value = state.lastPrediction?.model_name ?? el("exploreModel").value;
-      updateExploreRuns();
-      el("exploreRun").value = state.lastPrediction?.prediction_run_id ?? el("exploreRun").value;
-    }, 0);
-  });
-
-  el("exploreSymbol").addEventListener("change", updateExploreRuns);
-  el("exploreModel").addEventListener("change", updateExploreRuns);
-
-  el("exploreLoad").addEventListener("click", async () => {
-    const symbol = el("exploreSymbol").value;
-    const model = el("exploreModel").value;
-    const run = el("exploreRun").value;
-    const limit = parseInt(el("exploreLimit").value || "200", 10);
-    const wrap = el("exploreTableWrap");
-    wrap.innerHTML = `<div class="muted" style="padding: 12px;">Loading…</div>`;
-    try {
-      const data = await apiFetch(
-        `/predictions/${encodeURIComponent(symbol)}/${encodeURIComponent(run)}/data?model_name=${encodeURIComponent(model)}&limit=${encodeURIComponent(
-          String(limit),
-        )}`,
-      );
-      renderTable(wrap, data.rows);
-    } catch (err) {
-      wrap.innerHTML = `<div class="muted" style="padding: 12px;">Error: ${err.message}</div>`;
-    }
-  });
-
-  el("btRefresh").addEventListener("click", async () => {
-    await refreshData();
-  });
-
-  el("backtestForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const form = new FormData(e.currentTarget);
-    const predSel = String(el("btPredRun").value || "");
-    const [predSymbol, predModel, predRun] = predSel.split("||");
-    try {
-      const predMeta = await apiFetch(
-        `/predictions/${encodeURIComponent(predSymbol)}/${encodeURIComponent(predRun)}?model_name=${encodeURIComponent(predModel)}`,
-      );
-      const predictions_uri = predMeta.predictions_uri;
-      const config = {
-        name: `ui_bt_${new Date().toISOString().slice(0, 10)}`,
-        symbol: String(form.get("symbol") || "").trim(),
-        strategy: String(form.get("strategy") || "straddle").trim(),
-        start_date: String(form.get("start_date") || "").trim(),
-        end_date: String(form.get("end_date") || "").trim(),
-        data: { predictions_uri },
-      };
-      const data = await apiFetch("/backtests", { method: "POST", body: JSON.stringify({ config }) });
-      state.lastBacktest = { ...data, symbol: config.symbol };
-      setJson(el("backtestResult"), state.lastBacktest);
-      await refreshData();
-    } catch (err) {
-      setJson(el("backtestResult"), { error: err.message });
-    }
-  });
-
-  el("loadBacktest").addEventListener("click", async () => {
-    if (!state.lastBacktest?.bt_id || !state.lastBacktest?.symbol) return;
-    try {
-      const data = await apiFetch(
-        `/backtests/${encodeURIComponent(state.lastBacktest.symbol)}/${encodeURIComponent(state.lastBacktest.bt_id)}/data`,
-      );
-      setJson(el("btMetrics"), data.metrics);
-      renderTable(el("btTrades"), data.trades || []);
-    } catch (err) {
-      setJson(el("btMetrics"), { error: err.message });
-      el("btTrades").innerHTML = `<div class="muted" style="padding: 12px;">Error: ${err.message}</div>`;
-    }
-  });
+  }
+  if (strategy === "rsi_mean_reversion") {
+    return {
+      rsi_period: parseInt(form.get("rsi_period")) || 14,
+      oversold: parseFloat(form.get("oversold")) || 30,
+      overbought: parseFloat(form.get("overbought")) || 70,
+    };
+  }
+  return {};
 }
 
-async function main() {
-  renderNav();
-  showPage();
-  bindEvents();
-  await refreshHealth();
+// ── Form Submit ─────────────────────────────────────────────
+
+async function handleSubmit(e) {
+  e.preventDefault();
+  const form = new FormData(e.currentTarget);
+  const btn = e.currentTarget.querySelector("button[type=submit]");
+  const errorBox = $("errorBox");
+
+  hide(errorBox);
+  hide($("results"));
+  btn.disabled = true;
+  btn.textContent = "Running…";
+
+  const payload = {
+    symbol: form.get("symbol").trim().toUpperCase(),
+    strategy: form.get("strategy"),
+    start_date: form.get("start_date"),
+    end_date: form.get("end_date"),
+    initial_cash: parseFloat(form.get("initial_cash")) || 100000,
+    params: getStrategyParams(form),
+  };
+
   try {
-    await refreshData();
+    const data = await apiFetch("/backtests/", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+
+    renderSummary(data.summary);
+    renderEquityCurve(data.equity_curve);
+    renderTrades(data.trades);
+    show($("results"));
   } catch (err) {
-    // show errors in overview lists
-    el("modelsList").innerHTML = `<div class="item">Error: ${err.message}</div>`;
+    errorBox.textContent = err.message;
+    show(errorBox);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Run Backtest";
   }
 }
 
-main();
+// ── Init ────────────────────────────────────────────────────
 
+document.addEventListener("DOMContentLoaded", () => {
+  checkHealth();
+  $("backtestForm").addEventListener("submit", handleSubmit);
+  $("strategySelect").addEventListener("change", updateParamVisibility);
+  updateParamVisibility();
+});
